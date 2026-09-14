@@ -11,6 +11,7 @@ client_scripts {
 }
 
 server_scripts {
+    'server/config.lua',
     'server/rpuk-functions.lua',
     'server/server.lua',
 }

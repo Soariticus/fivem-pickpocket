@@ -1,41 +1,33 @@
-local PICKPOCKET_RANGE = 10.0 -- Any attempt further away from the ped gets sent in discord
-local PICKPOCKET_TIME = 1000 * 3 -- Any shorter and alert sent in discord
-local COOLDOWN_TIME = 1000 * 30 -- Ditto ^
-
-local POLICE_ALERT_CHANCE = 10 
-local SUCCESS_CHANCE = 40
-
-local ON_SUCCESS = {
-    { chance = 90, key = 'cash' },
-    { chance = 10, key = 'item' },
-}
-
-local ON_FAILURE = {
-    { chance = 70, key = 'nothing' },
-    { chance = 30, key = 'caught' }, -- ped attacks/runs away
-}
-
--- Items that can be gotten, and how many
-local ITEMS = {
-    { name = 'weed', min = 1, max = 3 },
-    { name = 'coke', min = 1, max = 2 },
-}
-
--- How much cash can be gained
-local CASH_MIN = 100
-local CASH_MAX = 500
-
 --------------------------------------------------------------------------------
 -- Supporting functions
 --------------------------------------------------------------------------------
 
-local function rollItem()
-    local item = ITEMS[math.random(#ITEMS)]
-    return item.name, math.random(item.min, item.max)
+local function getLevel(skill)
+    return math.min(math.floor(skill / Config.SkillPerLevel), Config.MaxLevel)
+end
+
+-- Multiplier for success chance
+local function getScaledMultiplier(value, cap, maxMultiplier)
+    return 1.0 + (maxMultiplier - 1.0) * math.min(value / cap, 1.0)
+end
+
+local function rollItem(level)
+    local pool = Config.LevelItems[level]
+    local roll = math.random(100)
+    local total = 0
+
+    for _, item in ipairs(pool) do
+        total += item.chance
+
+        if roll <= total then
+            return item.name, math.random(item.min, item.max)
+        end
+    end
 end
 
 local function rollFrom(pool)
-    local roll, total = math.random(100), 0
+    local roll = math.random(100)
+    local total = 0
 
     for _, entry in ipairs(pool) do
         total += entry.chance
@@ -48,7 +40,7 @@ end
 
 --------------------------------------------------------------------------------
 -- Core functionality
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 
 local cooldowns = {} -- Previous attempts, for tracking cooldowns server-side
 local pending = {} -- Attempts that are in-progress
@@ -59,23 +51,27 @@ lib.callback.register('pickpocket:requestOutcome', function(playerId, pedId, ped
     local playerCoords = GetEntityCoords(GetPlayerPed(playerId))
     local distance = #(playerCoords - pedCoords)
 
-    if distance > PICKPOCKET_RANGE then
-        RPUK.discordAlert(characterId, ('tried pickpocketing a ped %.1fm away (max %.0fm)'):format(distance, PICKPOCKET_RANGE))
-        return { ok = false }
-    end
-
     cooldowns[characterId] = cooldowns[characterId] or {}
 
     local lastAttempt = cooldowns[characterId][pedId]
-    local onCooldown = lastAttempt and GetGameTimer() - lastAttempt < COOLDOWN_TIME
+    local onCooldown = lastAttempt and GetGameTimer() - lastAttempt < Config.CooldownTime
 
-    -- Client checks this locally, so getting here SHOULD be impossible(?)
+    -- AntiCheat
+    if distance > Config.PickpocketRange then
+        RPUK.discordAlert(characterId, ('tried pickpocketing a ped %.1fm away (max %.0fm)'):format(distance, Config.PickpocketRange))
+        return { ok = false }
+    end
+    
     if onCooldown then
         RPUK.discordAlert(characterId, 'requested a pickpocket while still on cooldown for this ped')
     end
+    --- end AntiCheat
 
-    local success = not onCooldown and math.random(100) <= SUCCESS_CHANCE
-    local key = rollFrom(success and ON_SUCCESS or ON_FAILURE)
+    local streetCred = RPUK.getStreetCred(playerId, Config.SkillId) or 0
+    local successChance = Config.SuccessChance * getScaledMultiplier(streetCred, Config.StreetCredMax, Config.SuccessMultiplierMax)
+
+    local success = not onCooldown and math.random(100) <= successChance
+    local key = rollFrom(success and Config.OnSuccess or Config.OnFailure)
 
     -- Stash the outcome until client confirms they're done
     pending[playerId] = {
@@ -102,22 +98,31 @@ RegisterNetEvent('pickpocket:confirmOutcome', function(pedId)
     if not request or request.pedId ~= pedId then
         return RPUK.discordAlert(RPUK.getCharacterId(playerId), 'client confirmed a pickpocket that never started')
     end
-    if GetGameTimer() - request.rolledAt < PICKPOCKET_TIME - 500 then
+    if GetGameTimer() - request.rolledAt < Config.PickpocketTime - 500 then
         return RPUK.discordAlert(request.characterId, 'client confirmed a pickpocket faster than what should be possible')
     end
-    -- end anticheat
+    --- end AntiCheat
 
     cooldowns[request.characterId][request.pedId] = GetGameTimer()
 
     if request.success then
-        if request.key == 'cash' then
-            RPUK.addItem(playerId, 'cash', math.random(CASH_MIN, CASH_MAX))
-        elseif request.key == 'item' then
-            RPUK.addItem(playerId, rollItem())
-        end
+        local skill = RPUK.getSkill(playerId, Config.SkillId) or 0
+
+        RPUK.updateStreetCred(playerId, math.random(Config.CredMin, Config.CredMax))
+        RPUK.updateSkill(playerId, Config.SkillGain)
+
+        local name, amount = rollItem(getLevel(skill))
+        RPUK.addItem(playerId, name, amount)
+    elseif not request.success then
+        RPUK.updateStreetCred(playerId, -(math.random(Config.CredMin, Config.CredMax) * 0.5)) -- unsuccessful removes cred with 0.5x multiplier
     end
 
-    if request.witnessed and math.random(100) <= POLICE_ALERT_CHANCE then
+    local policeAlertChance = Config.PoliceAlertChanceNoWitness
+    if request.witnessed then
+        policeAlertChance = Config.PoliceAlertChanceWitness
+    end
+
+    if math.random(100) <= policeAlertChance then
         RPUK.dispatchPolice(request.pedCoords)
     end
 
