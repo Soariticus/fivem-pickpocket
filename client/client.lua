@@ -43,7 +43,7 @@ local function startRadiusWatch(ped, onCancel)
             local pedCoords = GetEntityCoords(ped)
 
             DrawMarker(1, pedCoords.x, pedCoords.y, pedCoords.z - 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                PICKPOCKET_RADIUS * 2, PICKPOCKET_RADIUS * 2, 1.0, 255, 0, 0, 100, false, false, 2, false, nil, nil, false)
+                PICKPOCKET_RADIUS * 2, PICKPOCKET_RADIUS * 2, 0.01, 255, 255, 255, 255, false, false, 2, false, nil, nil, false)
 
             if #(GetEntityCoords(cache.ped) - pedCoords) > PICKPOCKET_RADIUS then
                 onCancel()
