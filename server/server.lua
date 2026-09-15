@@ -33,7 +33,7 @@ local function rollFrom(pool)
         total += entry.chance
 
         if roll <= total then
-            return entry.key
+            return entry.outcomeType
         end
     end
 end
@@ -46,9 +46,9 @@ local cooldowns = {} -- Previous attempts, for tracking cooldowns server-side
 local pending = {} -- Attempts that are in-progress
 
 -- Decide the outcome & provide that to client
-lib.callback.register('pickpocket:requestOutcome', function(playerId, pedId, pedCoords, witnessed)
-    local characterId = RPUK.getCharacterId(playerId)
-    local playerCoords = GetEntityCoords(GetPlayerPed(playerId))
+lib.callback.register('pickpocket:requestOutcome', function(sessionId, pedId, pedCoords, witnessed)
+    local characterId = RPUK.getCharacterId(sessionId)
+    local playerCoords = GetEntityCoords(GetPlayerPed(sessionId))
     local distance = #(playerCoords - pedCoords)
 
     cooldowns[characterId] = cooldowns[characterId] or {}
@@ -58,63 +58,69 @@ lib.callback.register('pickpocket:requestOutcome', function(playerId, pedId, ped
 
     -- AntiCheat
     if distance > Config.PickpocketRange then
-        RPUK.discordAlert(characterId, ('tried pickpocketing a ped %.1fm away (max %.0fm)'):format(distance, Config.PickpocketRange))
+        RPUK.discordAlert(sessionId, characterId, ('tried pickpocketing a ped %.1fm away (max %.0fm)'):format(distance, Config.PickpocketRange))
         return { ok = false }
     end
     
     if onCooldown then
-        RPUK.discordAlert(characterId, 'requested a pickpocket while still on cooldown for this ped')
+        RPUK.discordAlert(sessionId, characterId, 'requested a pickpocket while still on cooldown for this ped')
     end
     --- end AntiCheat
 
-    local streetCred = RPUK.getStreetCred(playerId, Config.SkillId) or 0
+    local streetCred = RPUK.getStreetCred(sessionId, characterId) or 0
     local successChance = Config.SuccessChance * getScaledMultiplier(streetCred, Config.StreetCredMax, Config.SuccessMultiplierMax)
 
     local success = not onCooldown and math.random(100) <= successChance
-    local key = rollFrom(success and Config.OnSuccess or Config.OnFailure)
+    local outcomeType = rollFrom(success and Config.OnSuccess or Config.OnFailure)
 
     -- Stash the outcome until client confirms they're done
-    pending[playerId] = {
+    pending[sessionId] = {
+        sessionId = sessionId,
         characterId = characterId,
         pedId = pedId,
         pedCoords = pedCoords,
         witnessed = witnessed,
         success = success,
-        key = key,
         rolledAt = GetGameTimer(),
+        outcomeType = outcomeType,
+        rewardName = 'None',
+        rewardAmount = -1
     }
 
-    return { ok = true, success = success, key = key }
+    return { ok = true, success = success, outcomeType = outcomeType }
 end)
 
 -- Client reports progress bar done
 RegisterNetEvent('pickpocket:confirmOutcome', function(pedId)
-    local playerId = source
-    local request = pending[playerId]
+    local sessionId = source
+    local request = pending[sessionId]
 
-    pending[playerId] = nil -- Clear early in case anything hangs server-side
+    pending[sessionId] = nil -- Clear early in case anything hangs server-side
 
     -- Anticheat
     if not request or request.pedId ~= pedId then
-        return RPUK.discordAlert(RPUK.getCharacterId(playerId), 'client confirmed a pickpocket that never started')
+        return RPUK.discordAlert(sessionId, RPUK.getCharacterId(sessionId), 'client confirmed a pickpocket that never started')
     end
+
+    local characterId = request.characterId
+
     if GetGameTimer() - request.rolledAt < Config.PickpocketTime - 500 then
-        return RPUK.discordAlert(request.characterId, 'client confirmed a pickpocket faster than what should be possible')
+        return RPUK.discordAlert(sessionId, characterId, 'client confirmed a pickpocket faster than what should be possible')
     end
     --- end AntiCheat
 
-    cooldowns[request.characterId][request.pedId] = GetGameTimer()
+    cooldowns[characterId][request.pedId] = GetGameTimer()
 
     if request.success then
-        local skill = RPUK.getSkill(playerId, Config.SkillId) or 0
+        local skill = RPUK.getSkill(sessionId, characterId, Config.SkillId) or 0
 
-        RPUK.updateStreetCred(playerId, math.random(Config.CredMin, Config.CredMax))
-        RPUK.updateSkill(playerId, Config.SkillGain)
+        RPUK.updateStreetCred(sessionId, characterId, math.random(Config.CredMin, Config.CredMax))
+        RPUK.updateSkill(sessionId, characterId, Config.SkillGain)
 
-        local name, amount = rollItem(getLevel(skill))
-        RPUK.addItem(playerId, name, amount)
+        request.rewardName, request.rewardAmount = rollItem(getLevel(skill))
+        RPUK.addItem(sessionId, characterId, request.rewardName, request.rewardAmount)
     elseif not request.success then
-        RPUK.updateStreetCred(playerId, -(math.random(Config.CredMin, Config.CredMax) * 0.5)) -- unsuccessful removes cred with 0.5x multiplier
+        RPUK.updateStreetCred(sessionId, characterId, -(math.random(Config.CredMin, Config.CredMax) * 0.5)) -- unsuccessful removes cred with 0.5x multiplier
     end
 
     local policeAlertChance = Config.PoliceAlertChanceNoWitness
@@ -123,7 +129,7 @@ RegisterNetEvent('pickpocket:confirmOutcome', function(pedId)
     end
 
     if math.random(100) <= policeAlertChance then
-        RPUK.dispatchPolice(request.pedCoords)
+        RPUK.dispatchPolice(sessionId, characterId, request.pedCoords)
     end
 
     RPUK.log(request)

@@ -15,13 +15,12 @@ local RESULTS = {
     },
 }
 
--- Output UI message to client
 function PresentOutcome(ped, key)
     local result = RESULTS[key]
 
     if not result then return end
 
-    RPUK.notify({ description = result.message, type = result.type })
+    RPUK.notify(result.message)
 
     if result.onCaught then
         result.onCaught(ped)

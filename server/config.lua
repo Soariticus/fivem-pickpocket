@@ -6,15 +6,15 @@ Config.CooldownTime = 1000 * 30 -- Ditto ^
 
 Config.PoliceAlertChanceWitness = 10
 Config.PoliceAlertChanceNoWitness = 5
-Config.SuccessChance = 40 -- * 1.5 at max street cred
+Config.SuccessChance = 40 -- scales based on street cred
 
 Config.OnSuccess = {
-    { chance = 100, key = 'item' },
+    { chance = 100, outcomeType = 'item' },
 }
 
 Config.OnFailure = {
-    { chance = 70, key = 'nothing' },
-    { chance = 30, key = 'caught' }, -- ped attacks/runs away
+    { chance = 70, outcomeType = 'nothing' },
+    { chance = 30, outcomeType = 'caught' }, -- ped attacks/runs away
 }
 
 -- Amount of cred that can be gained/lost

@@ -10,13 +10,12 @@ local lastAttempt = {}
 -- Supporting functions
 --------------------------------------------------------------------------------
 
-
 local function getPedId(ped)
     if NetworkGetEntityIsNetworked(ped) then
-        return 'net:' .. NetworkGetNetworkIdFromEntity(ped)
+        return NetworkGetNetworkIdFromEntity(ped) -- Networked ped returns positive value
     end
 
-    return 'local:' .. ped
+    return -ped -- Negative value is a local ped
 end
 
 local function hasNearbyWitness(ped)
@@ -62,6 +61,7 @@ local function playAnimation(dict, clip, loop)
     TaskPlayAnim(cache.ped, dict, clip, 8.0, -8.0, -1, loop and 49 or 48, 0, false, false, false)
 end
 
+
 --------------------------------------------------------------------------------
 -- Core functionality
 -------------------------------------------------------------------------------
@@ -72,7 +72,7 @@ local function pickpocket(data)
     if not ped or ped == 0 then return end
 
     if lastAttempt[ped] and GetGameTimer() - lastAttempt[ped] < COOLDOWN_TIME then
-        RPUK.notify({ description = "This person seems on guard, I'd best wait." })
+        RPUK.notify("This person seems on guard, I'd best wait.")
         return
     end
 
@@ -97,7 +97,7 @@ local function pickpocket(data)
     local completed = RPUK.progressBar({
         duration = PICKPOCKET_TIME,
         label = 'Nicking their shit...',
-        canCancel = true,
+        canCancel = true
     })
 
     stopWatch()
@@ -105,7 +105,7 @@ local function pickpocket(data)
 
     -- Player walked out of range
     if not completed then
-        RPUK.notify({ description = "My arms aren't that long..." }) 
+        RPUK.notify("My arms aren't that long...") 
         return
     end
 
@@ -118,7 +118,7 @@ local function pickpocket(data)
 
     -- Either got no response from the server, or anticheat blocked it
     if not outcome or not outcome.ok then
-        RPUK.notify({ description = "You found nothing worth taking." })
+        RPUK.notify("You found nothing worth taking.")
         return
     end
 
@@ -131,7 +131,7 @@ local function pickpocket(data)
         playAnimation('gestures@m@standing@casual', 'gesture_damn')
     end
 
-    PresentOutcome(ped, outcome.key) -- Shows outcome to client
+    PresentOutcome(ped, outcome.outcomeType) -- Shows outcome to client
 end
 
 
