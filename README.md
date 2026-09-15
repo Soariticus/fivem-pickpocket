@@ -4,8 +4,9 @@ A simple and basic setup to allow for the player to pickpocket local peds, with 
 Put together for RPUK, in preparation of my application as dev.
 
 ### Showcase
-[GIF TBA] [GIF TBA]  
-[GIF TBA] [GIF TBA]
+<img width="426" height="240" alt="still (1)" src="https://github.com/user-attachments/assets/4bed671e-5b61-4ef3-8a09-6b62c1bf2b1e" />
+
+<img width="426" height="240" alt="walking" src="https://github.com/user-attachments/assets/97061a9d-45e5-4e65-bce8-9c841d1cce12" />
 
 ## Features
 ### Gameplay
